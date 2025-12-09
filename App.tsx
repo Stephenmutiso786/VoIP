@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Login } from './components/Login';
 import { Layout } from './components/Layout';
@@ -7,12 +8,36 @@ import { Analytics } from './components/Analytics';
 import { Settings } from './components/Settings';
 import { AIAnalyst } from './components/AIAnalyst';
 import { User, Call, CallStatus } from './types';
-import { INITIAL_CALLS, AGENTS } from './constants';
+import { INITIAL_CALLS, AGENTS, MOCK_USERS } from './constants';
 
 const App: React.FC = () => {
+  // "Backend" State - Persisted in LocalStorage
   const [user, setUser] = useState<User | null>(null);
+  const [allUsers, setAllUsers] = useState<User[]>(() => {
+    const saved = localStorage.getItem('vetracom_users');
+    return saved ? JSON.parse(saved) : MOCK_USERS;
+  });
+  
   const [calls, setCalls] = useState<Call[]>(INITIAL_CALLS);
   const [currentPage, setCurrentPage] = useState('dashboard');
+
+  // Persist Users on change (Simulating Database Update)
+  useEffect(() => {
+    localStorage.setItem('vetracom_users', JSON.stringify(allUsers));
+    
+    // Sync current user session if their profile was updated in the 'database'
+    if (user) {
+      const updatedCurrentUser = allUsers.find(u => u.id === user.id);
+      if (updatedCurrentUser && JSON.stringify(updatedCurrentUser) !== JSON.stringify(user)) {
+        setUser(updatedCurrentUser);
+      }
+    }
+  }, [allUsers, user]);
+
+  // Handler for Profile Updates from Layout
+  const handleUpdateUser = (updatedUser: User) => {
+    setAllUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
+  };
 
   // Simulate Live Calls
   useEffect(() => {
@@ -77,7 +102,7 @@ const App: React.FC = () => {
   }, [user]);
 
   if (!user) {
-    return <Login onLogin={setUser} />;
+    return <Login onLogin={setUser} users={allUsers} />;
   }
 
   const renderPage = () => {
@@ -91,7 +116,7 @@ const App: React.FC = () => {
       case 'ai-insights':
         return <AIAnalyst calls={calls} />;
       case 'settings':
-        return <Settings />;
+        return <Settings users={allUsers} setUsers={setAllUsers} currentUser={user} />;
       default:
         return <Dashboard calls={calls} />;
     }
@@ -104,6 +129,7 @@ const App: React.FC = () => {
       currentPage={currentPage}
       onNavigate={setCurrentPage}
       calls={calls}
+      onUpdateUser={handleUpdateUser}
     >
       {renderPage()}
     </Layout>

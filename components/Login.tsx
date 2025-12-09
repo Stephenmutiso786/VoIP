@@ -1,21 +1,27 @@
+
 import React, { useState } from 'react';
-import { MOCK_USERS } from '../constants';
 import { User } from '../types';
 import { PhoneIcon } from '@heroicons/react/24/solid';
 
 interface LoginProps {
   onLogin: (user: User) => void;
+  users: User[];
 }
 
-export const Login: React.FC<LoginProps> = ({ onLogin }) => {
+export const Login: React.FC<LoginProps> = ({ onLogin, users }) => {
   const [username, setUsername] = useState('lewis');
   const [password, setPassword] = useState('lewis123');
   const [error, setError] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const user = MOCK_USERS.find(u => u.username === username && u.password === password);
+    const user = users.find(u => u.username === username && u.password === password);
+    
     if (user) {
+      if (user.status === 'Inactive') {
+        setError('Account is disabled. Contact Administrator.');
+        return;
+      }
       onLogin(user);
     } else {
       setError('Invalid credentials.');

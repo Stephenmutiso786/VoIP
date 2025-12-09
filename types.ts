@@ -1,3 +1,4 @@
+
 export enum CallStatus {
   RINGING = 'Ringing',
   IN_PROGRESS = 'In Progress',
@@ -26,11 +27,26 @@ export interface Call {
 }
 
 export interface User {
-  id: string;
+  id: string | number;
   username: string;
+  password?: string; // In a real app, this would be hashed. Storing here for simulation.
   role: UserRole;
   name: string;
+  email?: string;
   avatar?: string;
+  status?: 'Active' | 'Inactive';
+  lastLogin?: number;
+}
+
+export interface PBXConfig {
+  id: string;
+  name: string;
+  type: '3cx' | 'yeastar' | 'asterisk' | 'freepbx' | 'cisco' | 'avaya';
+  status: 'connected' | 'disconnected' | 'error' | 'maintenance';
+  url: string;
+  apiKey: string;
+  region: string;
+  capacity: number;
 }
 
 export interface AnalyticsData {
