@@ -1,0 +1,5 @@
+{
+  "name": " VetraCom VoIP Monitor",
+  "description": "A comprehensive real-time VoIP monitoring dashboard featuring live call tracking, analytics, and AI-powered insights using Gemini.",
+  "requestFramePermissions": []
+}
