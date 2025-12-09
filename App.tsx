@@ -103,6 +103,7 @@ const App: React.FC = () => {
       onLogout={() => setUser(null)}
       currentPage={currentPage}
       onNavigate={setCurrentPage}
+      calls={calls}
     >
       {renderPage()}
     </Layout>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Call, CallStatus } from '../types';
 import { STATUS_COLORS } from '../constants';
 import { 
@@ -6,33 +6,105 @@ import {
   FunnelIcon, 
   ArrowDownLeftIcon, 
   ArrowUpRightIcon,
-  CalendarDaysIcon 
+  CalendarDaysIcon,
+  ArrowDownTrayIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon
 } from '@heroicons/react/24/outline';
 
 interface CallLogsProps {
   calls: Call[];
 }
 
+type TimeRange = '24h' | '7d' | '30d' | 'all';
+
 export const CallLogs: React.FC<CallLogsProps> = ({ calls }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('All');
+  const [timeRange, setTimeRange] = useState<TimeRange>('24h');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
-  const filteredCalls = calls.filter(call => {
-    const matchesSearch = 
-      call.caller.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      call.receiver.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (call.agent && call.agent.toLowerCase().includes(searchTerm.toLowerCase()));
-    
-    const matchesStatus = filterStatus === 'All' || call.status === filterStatus;
-    
-    return matchesSearch && matchesStatus;
-  }).sort((a, b) => b.startTime - a.startTime);
+  // Filter Logic
+  const filteredCalls = useMemo(() => {
+    let result = calls;
+
+    // Time Filter
+    const now = Date.now();
+    if (timeRange === '24h') {
+        const oneDayAgo = now - 24 * 60 * 60 * 1000;
+        result = result.filter(c => c.startTime > oneDayAgo);
+    } else if (timeRange === '7d') {
+        const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+        result = result.filter(c => c.startTime > sevenDaysAgo);
+    }
+
+    // Search Filter
+    if (searchTerm) {
+        const lowerSearch = searchTerm.toLowerCase();
+        result = result.filter(call => 
+          call.caller.toLowerCase().includes(lowerSearch) || 
+          call.receiver.toLowerCase().includes(lowerSearch) ||
+          (call.agent && call.agent.toLowerCase().includes(lowerSearch))
+        );
+    }
+
+    // Status Filter
+    if (filterStatus !== 'All') {
+        result = result.filter(c => c.status === filterStatus);
+    }
+
+    // Sort by time desc
+    return result.sort((a, b) => b.startTime - a.startTime);
+  }, [calls, searchTerm, filterStatus, timeRange]);
+
+  // Pagination Logic
+  const totalPages = Math.ceil(filteredCalls.length / itemsPerPage);
+  const paginatedCalls = filteredCalls.slice(
+      (currentPage - 1) * itemsPerPage, 
+      currentPage * itemsPerPage
+  );
+
+  const handlePageChange = (newPage: number) => {
+      if (newPage >= 1 && newPage <= totalPages) {
+          setCurrentPage(newPage);
+      }
+  };
 
   const formatDuration = (seconds: number) => {
     if (seconds === 0) return '-';
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}m ${secs}s`;
+  };
+
+  const handleExportCSV = () => {
+    const headers = ["ID", "Direction", "Caller", "Receiver", "Status", "Duration (s)", "Start Time", "Agent"];
+    const rows = filteredCalls.map(c => [
+        c.id,
+        c.direction,
+        c.caller,
+        c.receiver,
+        c.status,
+        c.duration,
+        new Date(c.startTime).toISOString(),
+        c.agent || ''
+    ]);
+
+    const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `vetracom_logs_${new Date().toISOString().slice(0,10)}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
@@ -42,10 +114,17 @@ export const CallLogs: React.FC<CallLogsProps> = ({ calls }) => {
             <h2 className="text-2xl font-bold text-slate-900">Call Logs</h2>
             <p className="text-slate-500 text-sm mt-1">Detailed history of all system communications.</p>
          </div>
-         <button className="inline-flex items-center px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 shadow-sm">
-            <CalendarDaysIcon className="h-5 w-5 mr-2 text-slate-400" />
-            Last 24 Hours
-         </button>
+         <div className="flex items-center space-x-2">
+            <select 
+                value={timeRange} 
+                onChange={(e) => setTimeRange(e.target.value as TimeRange)}
+                className="inline-flex items-center px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+                <option value="24h">Last 24 Hours</option>
+                <option value="7d">Last 7 Days</option>
+                <option value="all">All Time</option>
+            </select>
+         </div>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
@@ -57,10 +136,10 @@ export const CallLogs: React.FC<CallLogsProps> = ({ calls }) => {
               </div>
               <input
                 type="text"
-                placeholder="Search logs..."
+                placeholder="Search logs by number or agent..."
                 className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg leading-5 bg-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
               />
            </div>
            
@@ -68,22 +147,26 @@ export const CallLogs: React.FC<CallLogsProps> = ({ calls }) => {
              <div className="flex items-center space-x-2 bg-white border border-slate-300 rounded-lg px-3 py-2">
                <FunnelIcon className="h-4 w-4 text-slate-500" />
                <select 
-                 className="block w-full bg-transparent border-none focus:ring-0 p-0 text-sm text-slate-700"
+                 className="block w-full bg-transparent border-none focus:ring-0 p-0 text-sm text-slate-700 cursor-pointer"
                  value={filterStatus}
-                 onChange={(e) => setFilterStatus(e.target.value)}
+                 onChange={(e) => { setFilterStatus(e.target.value); setCurrentPage(1); }}
                >
                  <option value="All">All Statuses</option>
                  {Object.values(CallStatus).map(s => <option key={s} value={s}>{s}</option>)}
                </select>
              </div>
-             <button className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 shadow-sm transition-colors">
-               Export CSV
+             <button 
+                onClick={handleExportCSV}
+                className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 shadow-sm transition-colors"
+             >
+               <ArrowDownTrayIcon className="h-4 w-4" />
+               <span>Export CSV</span>
              </button>
            </div>
         </div>
 
         {/* Table */}
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto min-h-[400px]">
           <table className="min-w-full divide-y divide-slate-200">
             <thead className="bg-slate-50">
               <tr>
@@ -97,7 +180,7 @@ export const CallLogs: React.FC<CallLogsProps> = ({ calls }) => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-slate-200">
-              {filteredCalls.length > 0 ? filteredCalls.map((call) => (
+              {paginatedCalls.length > 0 ? paginatedCalls.map((call) => (
                 <tr key={call.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">
                     <div className="font-medium text-slate-900">{new Date(call.startTime).toLocaleTimeString()}</div>
@@ -145,11 +228,32 @@ export const CallLogs: React.FC<CallLogsProps> = ({ calls }) => {
             </tbody>
           </table>
         </div>
+        
+        {/* Pagination Controls */}
         <div className="bg-slate-50 px-4 py-3 border-t border-slate-200 sm:px-6 flex items-center justify-between">
-           <p className="text-xs text-slate-500">Showing <span className="font-medium">{filteredCalls.length}</span> records</p>
-           <div className="flex space-x-2">
-               <button className="px-3 py-1 border border-slate-300 rounded text-xs text-slate-600 disabled:opacity-50" disabled>Previous</button>
-               <button className="px-3 py-1 border border-slate-300 rounded text-xs text-slate-600 hover:bg-white hover:shadow-sm">Next</button>
+           <p className="text-xs text-slate-500 hidden sm:block">
+             Showing <span className="font-medium">{Math.min(filteredCalls.length, (currentPage - 1) * itemsPerPage + 1)}</span> to <span className="font-medium">{Math.min(filteredCalls.length, currentPage * itemsPerPage)}</span> of <span className="font-medium">{filteredCalls.length}</span> results
+           </p>
+           <div className="flex space-x-2 w-full sm:w-auto justify-between sm:justify-end">
+               <button 
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+                className="flex items-center px-3 py-1 border border-slate-300 rounded-md text-xs font-medium text-slate-600 hover:bg-white hover:text-slate-800 disabled:opacity-50 disabled:hover:bg-transparent"
+               >
+                 <ChevronLeftIcon className="h-3 w-3 mr-1" />
+                 Previous
+               </button>
+               <span className="flex items-center text-xs font-medium text-slate-600 sm:hidden">
+                 Page {currentPage} of {totalPages}
+               </span>
+               <button 
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage === totalPages || totalPages === 0}
+                className="flex items-center px-3 py-1 border border-slate-300 rounded-md text-xs font-medium text-slate-600 hover:bg-white hover:text-slate-800 disabled:opacity-50 disabled:hover:bg-transparent"
+               >
+                 Next
+                 <ChevronRightIcon className="h-3 w-3 ml-1" />
+               </button>
            </div>
         </div>
       </div>

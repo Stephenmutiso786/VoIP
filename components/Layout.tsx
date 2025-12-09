@@ -1,5 +1,5 @@
-import React from 'react';
-import { User, UserRole } from '../types';
+import React, { useState, useEffect, useRef } from 'react';
+import { User, UserRole, Call } from '../types';
 import { 
   PhoneIcon, 
   ChartBarIcon, 
@@ -8,7 +8,9 @@ import {
   ArrowRightOnRectangleIcon,
   SparklesIcon,
   BellIcon,
-  MagnifyingGlassIcon
+  MagnifyingGlassIcon,
+  XMarkIcon,
+  ClockIcon
 } from '@heroicons/react/24/outline';
 
 interface LayoutProps {
@@ -17,9 +19,49 @@ interface LayoutProps {
   onLogout: () => void;
   currentPage: string;
   onNavigate: (page: string) => void;
+  calls?: Call[];
 }
 
-export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, onNavigate }) => {
+export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, onNavigate, calls = [] }) => {
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<Call[]>([]);
+  const searchRef = useRef<HTMLDivElement>(null);
+  const notifRef = useRef<HTMLDivElement>(null);
+
+  const notifications = [
+    { id: 1, title: 'Missed Call Alert', desc: 'High volume of missed calls in Sales queue.', time: '2m ago', type: 'urgent' },
+    { id: 2, title: 'System Update', desc: 'PBX Connector v2.4.1 installed successfully.', time: '1h ago', type: 'info' },
+    { id: 3, title: 'New Agent', desc: 'James joined the support team.', time: '3h ago', type: 'info' },
+  ];
+
+  // Search Logic
+  useEffect(() => {
+    if (searchQuery.length > 2) {
+      const results = calls.filter(call => 
+        call.caller.includes(searchQuery) || 
+        call.receiver.includes(searchQuery) || 
+        (call.agent && call.agent.toLowerCase().includes(searchQuery.toLowerCase()))
+      ).slice(0, 5);
+      setSearchResults(results);
+    } else {
+      setSearchResults([]);
+    }
+  }, [searchQuery, calls]);
+
+  // Click outside listener
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setSearchResults([]);
+      }
+      if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
+        setIsNotificationsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
   
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: PhoneIcon, roles: [UserRole.ADMIN, UserRole.SUPERVISOR, UserRole.AGENT] },
@@ -92,27 +134,83 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, curren
            </div>
 
            {/* Search Bar (Desktop) */}
-           <div className="hidden md:flex relative max-w-md w-full">
+           <div className="hidden md:flex relative max-w-md w-full" ref={searchRef}>
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                  <MagnifyingGlassIcon className="h-5 w-5 text-slate-400" />
               </div>
               <input 
                 type="text" 
-                placeholder="Global Search (Calls, Agents, Dates)..." 
+                placeholder="Global Search (Calls, Agents)..." 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 className="block w-full pl-10 pr-3 py-2 border border-slate-200 rounded-lg leading-5 bg-slate-50 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all sm:text-sm"
               />
+              {/* Search Dropdown Results */}
+              {searchQuery.length > 2 && (
+                <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-50">
+                   {searchResults.length > 0 ? (
+                      <div>
+                        <div className="px-4 py-2 bg-slate-50 border-b border-slate-100 text-xs font-semibold text-slate-500 uppercase">
+                           Recent Matches
+                        </div>
+                        {searchResults.map(call => (
+                           <div key={call.id} onClick={() => { onNavigate('logs'); setSearchQuery(''); }} className="px-4 py-3 hover:bg-blue-50 cursor-pointer border-b border-slate-50 last:border-0">
+                              <p className="text-sm font-medium text-slate-900">{call.caller} → {call.receiver}</p>
+                              <div className="flex justify-between items-center mt-1">
+                                 <span className="text-xs text-slate-500">{new Date(call.startTime).toLocaleTimeString()}</span>
+                                 <span className={`text-[10px] px-1.5 py-0.5 rounded ${call.status === 'Missed' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
+                                    {call.status}
+                                 </span>
+                              </div>
+                           </div>
+                        ))}
+                      </div>
+                   ) : (
+                      <div className="p-4 text-center text-sm text-slate-500">No matching calls found</div>
+                   )}
+                </div>
+              )}
            </div>
 
            {/* Right Actions */}
            <div className="flex items-center space-x-4">
-              <button className="relative p-2 text-slate-400 hover:text-slate-600 transition-colors">
-                 <BellIcon className="h-6 w-6" />
-                 <span className="absolute top-1.5 right-1.5 block h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white"></span>
-              </button>
+              <div className="relative" ref={notifRef}>
+                <button 
+                  onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
+                  className={`relative p-2 rounded-full transition-colors ${isNotificationsOpen ? 'bg-blue-50 text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
+                >
+                   <BellIcon className="h-6 w-6" />
+                   <span className="absolute top-1.5 right-1.5 block h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white animate-pulse"></span>
+                </button>
+                
+                {/* Notification Dropdown */}
+                {isNotificationsOpen && (
+                   <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-50 animate-fade-in-up">
+                      <div className="px-4 py-3 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                         <h3 className="font-semibold text-slate-800">Notifications</h3>
+                         <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">3 New</span>
+                      </div>
+                      <div className="max-h-80 overflow-y-auto">
+                         {notifications.map(notif => (
+                            <div key={notif.id} className="px-4 py-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 transition-colors cursor-pointer group">
+                               <div className="flex justify-between items-start">
+                                  <p className={`text-sm font-medium ${notif.type === 'urgent' ? 'text-red-600' : 'text-slate-800'}`}>{notif.title}</p>
+                                  <span className="text-xs text-slate-400">{notif.time}</span>
+                               </div>
+                               <p className="text-xs text-slate-500 mt-1 line-clamp-2">{notif.desc}</p>
+                            </div>
+                         ))}
+                      </div>
+                      <div className="px-4 py-2 border-t border-slate-100 bg-slate-50 text-center">
+                         <button className="text-xs text-blue-600 font-medium hover:text-blue-700">Mark all as read</button>
+                      </div>
+                   </div>
+                )}
+              </div>
               
               <div className="h-8 w-px bg-slate-200 mx-2"></div>
 
-              <div className="flex items-center space-x-3 pl-2">
+              <div className="flex items-center space-x-3 pl-2 cursor-pointer hover:opacity-80 transition-opacity">
                  <div className="text-right hidden sm:block">
                     <p className="text-sm font-semibold text-slate-900">{user.name}</p>
                     <p className="text-xs text-slate-500 capitalize">{user.role}</p>
@@ -135,7 +233,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, curren
       </div>
 
       {/* Mobile Bottom Nav */}
-      <nav className="md:hidden fixed bottom-0 w-full bg-white border-t border-slate-200 flex justify-around p-3 z-30 pb-safe">
+      <nav className="md:hidden fixed bottom-0 w-full bg-white border-t border-slate-200 flex justify-around p-3 z-30 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
          {navItems.map((item) => {
             if (!item.roles.includes(user.role)) return null;
             return (
